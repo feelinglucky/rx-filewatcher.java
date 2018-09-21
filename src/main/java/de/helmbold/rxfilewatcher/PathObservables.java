@@ -8,11 +8,13 @@ import static java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY;
 
 import io.reactivex.Observable;
 import io.reactivex.ObservableEmitter;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystem;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchEvent.Kind;
@@ -30,9 +32,9 @@ public final class PathObservables {
   /**
    * Creates an observable that watches the given directory and all its subdirectories. Directories
    * that are created after subscription are watched, too.
+   *
    * @param path Root directory to be watched
    * @return Observable that emits an event for each filesystem event.
-   * @throws IOException
    */
   public static Observable<WatchEvent<?>> watchRecursive(final Path path) throws IOException {
     final boolean recursive = true;
@@ -41,9 +43,9 @@ public final class PathObservables {
 
   /**
    * Creates an observable that watches the given path but not its subdirectories.
+   *
    * @param path Path to be watched
    * @return Observable that emits an event for each filesystem event.
-   * @throws IOException
    */
   public static Observable<WatchEvent<?>> watchNonRecursive(final Path path) throws IOException {
     final boolean recursive = false;
@@ -90,7 +92,25 @@ public final class PathObservables {
           }
           final Path dir = directoriesByKey.get(key);
           for (final WatchEvent<?> event : key.pollEvents()) {
-            subscriber.onNext(event);
+            Path fileAbsolutePath = Paths.get(dir.toString() + File.separator + event.context());
+            subscriber.onNext(
+                new WatchEvent<Path>() {
+                  @Override
+                  public Kind kind() {
+                    return event.kind();
+                  }
+
+                  @Override
+                  public int count() {
+                    return event.count();
+                  }
+
+                  @Override
+                  public Path context() {
+                    return fileAbsolutePath;
+                  }
+                });
+
             registerNewDirectory(subscriber, dir, event);
           }
           // reset key and remove from set if directory is no longer accessible
@@ -136,8 +156,7 @@ public final class PathObservables {
       final Kind<?> kind = event.kind();
       if (recursive && kind.equals(ENTRY_CREATE)) {
         // Context for directory entry event is the file name of entry
-        @SuppressWarnings("unchecked")
-        final WatchEvent<Path> eventWithPath = (WatchEvent<Path>) event;
+        @SuppressWarnings("unchecked") final WatchEvent<Path> eventWithPath = (WatchEvent<Path>) event;
         final Path name = eventWithPath.context();
         final Path child = dir.resolve(name);
         try {
